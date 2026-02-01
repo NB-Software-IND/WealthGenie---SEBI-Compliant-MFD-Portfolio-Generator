@@ -1,0 +1,5 @@
+{
+  "name": "WealthGenie - SEBI Compliant MFD Portfolio Generator",
+  "description": "A high-end platform for Mutual Fund Distributors to generate SEBI-AMFI compliant portfolio reports using advanced AI-driven risk profiling and fund selection logic.",
+  "requestFramePermissions": []
+}
