@@ -25,18 +25,7 @@ export const validateFinancialHealth = async (personal: PersonalDetails, financi
     
     CHECK FOR CONTRADICTIONS:
     1. Monthly Income < Total Monthly Outflow. (This is a FATAL error).
-    2. Check if the User Selected Tax Slab correctly matches the "Financial Base" of ₹${totalFinancialBase} based on standard Indian New Tax Regime slabs:
-       - Nil: Up to 3L
-       - 5%: 3-7L
-       - 10%: 7-10L
-       - 15%: 10-12L
-       - 20%: 12-15L
-       - 30%: Above 15L
-    
-    SPECIAL RULE FOR TAX SLAB:
-    - If the User Selected Tax Slab is INCORRECT based on the Financial Base (₹${totalFinancialBase}), identify the correct one.
-    - If ONLY the Tax Slab is incorrect, set "isValid" to TRUE, but provide the "suggestedTaxSlab".
-    - If there are fatal contradictions (e.g., Inflow < Outflow), set "isValid" to FALSE.
+    2. Check if the User Selected Tax Slab correctly matches the "Financial Base" of ₹${totalFinancialBase} based on standard Indian New Tax Regime slabs.
     
     Return JSON:
     {
@@ -65,8 +54,7 @@ export const validateFinancialHealth = async (personal: PersonalDetails, financi
     }
   });
 
-  const result = JSON.parse(response.text || '{"isValid": false, "errorMessage": "Validation failed", "warnings": [], "suggestedTaxSlab": null}');
-  return result;
+  return JSON.parse(response.text || '{"isValid": false, "errorMessage": "Validation failed", "warnings": [], "suggestedTaxSlab": null}');
 };
 
 /**
@@ -82,7 +70,6 @@ export const calculateRiskProfile = async (score: number, age: number): Promise<
     2. Suitable for: (Who should invest)
     3. Horizon: (Recommended time frame)
     
-    Ensure the tone is professional yet easy to understand for a retail investor.
     Return JSON with category and a professional description.`;
     
   const response = await ai.models.generateContent({
@@ -104,30 +91,24 @@ export const calculateRiskProfile = async (score: number, age: number): Promise<
 };
 
 /**
- * Calculates suggested investment amounts based on surplus.
+ * Calculates suggested investment amounts based on surplus and generates a suitability narrative.
  */
-export const getPortfolioSummary = async (financial: FinancialDetails): Promise<PortfolioSummary> => {
+export const getPortfolioSummary = async (financial: FinancialDetails, personal: PersonalDetails): Promise<PortfolioSummary> => {
   const insuranceMonthly = (financial.insurance.termPlan + financial.insurance.healthInsurance + financial.insurance.personalAccident) / 12;
   const amortizedYearly = financial.yearlyExpenses / 12;
   
   const prompt = `
-    As a Senior Financial Planner, calculate the recommended SIP and Lumpsum amounts for a salaried/retired individual:
+    As a Senior Financial Planner, calculate recommended SIP and Lumpsum for ${personal.name} (Age: ${personal.age}):
+    - Monthly Inflow: ₹${financial.monthlyIncome}
+    - Total Outflow: ₹${(financial.monthlyExpenses + amortizedYearly + insuranceMonthly).toFixed(2)}
+    - Investible Corpus: ₹${financial.totalCorpusToInvest}
+
+    STRICT RULES:
+    1. Emergency Buffer: 10-15% of Inflow.
+    2. SIP = Surplus - Buffer.
+    3. Lumpsum = 80% of Corpus.
     
-    INPUT DATA:
-    - Monthly Inflow (Salary/Pension): ₹${financial.monthlyIncome}
-    - Direct Monthly Expenses: ₹${financial.monthlyExpenses}
-    - Amortized Yearly Expenses (Monthly equivalent): ₹${amortizedYearly.toFixed(2)}
-    - Insurance Premiums (Monthly equivalent): ₹${insuranceMonthly.toFixed(2)}
-    - Investible Corpus (Available Lumpsum): ₹${financial.totalCorpusToInvest}
-
-    STRICT ARITHMETIC RULES:
-    1. Total Monthly Outflow = (Direct Monthly Expenses + Amortized Yearly Expenses + Monthly Insurance Premiums).
-    2. Gross Surplus = Monthly Inflow - Total Monthly Outflow.
-    3. Mandatory Emergency Buffer = 10% of Gross Surplus OR 15% of Monthly Inflow (whichever is more conservative).
-    4. Recommended SIP = Gross Surplus - Emergency Buffer. (If result < 0, set to 0).
-    5. Recommended Lumpsum = Minimum of (Investible Corpus) and (80% of Investible Corpus to keep 20% liquid).
-
-    Convert all final calculated amounts to Indian Numbering System words.
+    Also, generate a 3-sentence "Suitability Narrative" for SEBI compliance explaining WHY this asset allocation fits their profile.
     
     Return JSON matching the PortfolioSummary structure precisely.
   `;
@@ -146,6 +127,7 @@ export const getPortfolioSummary = async (financial: FinancialDetails): Promise<
           investableFromCorpusWords: { type: Type.STRING },
           totalInvestable: { type: Type.NUMBER },
           reasoning: { type: Type.STRING },
+          suitabilityNarrative: { type: Type.STRING },
           breakdown: {
             type: Type.OBJECT,
             properties: {
@@ -159,7 +141,7 @@ export const getPortfolioSummary = async (financial: FinancialDetails): Promise<
             required: ["totalMonthlyInflow", "totalMonthlyOutflow", "surplusBeforeInvestment"]
           }
         },
-        required: ["investableFromSalary", "investableFromSalaryWords", "investableFromCorpus", "investableFromCorpusWords", "breakdown", "reasoning"]
+        required: ["investableFromSalary", "investableFromSalaryWords", "investableFromCorpus", "investableFromCorpusWords", "breakdown", "reasoning", "suitabilityNarrative"]
       }
     }
   });
@@ -171,7 +153,7 @@ export const getPortfolioSummary = async (financial: FinancialDetails): Promise<
  */
 export const getAmountInWords = async (amount: number): Promise<string> => {
   if (!amount || amount <= 0) return "";
-  const prompt = `Convert the number ${amount} to Indian numbering system words (Rupees). Just return the string. Do not add any conversational filler.`;
+  const prompt = `Convert the number ${amount} to Indian numbering system words (Rupees). Just return the string.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt
@@ -213,13 +195,30 @@ const schemeSchema = {
       required: ["maxDrawdown", "volatility", "beta", "sebiRisk"]
     }
   },
-  required: ["name", "category", "performance", "riskMetrics", "benchmark"]
+  required: ["name", "category", "performance", "riskMetrics", "benchmark", "aum"]
 };
 
-export const getRecommendedSchemes = async (profile: RiskProfile, age: number, investment: any): Promise<RecommendedScheme[]> => {
-  const prompt = `Recommend exactly 5 distinct Growth Regular Mutual Funds optimized for a "${profile.category}" risk profile. 
-    Each scheme's 'sebiRisk' MUST follow the standard SEBI Risk-o-meter labels: Low, Moderately Low, Moderate, Moderately High, High, Very High.
-    Sum of allocation Pcts must be exactly 100. Provide exactly 4 high-quality alternative schemes per slot from the same category.`;
+export const getRecommendedSchemes = async (profile: RiskProfile, age: number, investment: any, riskAnswers: Record<number, number>): Promise<RecommendedScheme[]> => {
+  const horizonScore = riskAnswers[3] || 4; 
+  const isShortHorizon = horizonScore <= 2; 
+
+  const prompt = `
+    Generate exactly 5 distinct Mutual Fund recommendations for ${profile.category} risk, Age ${age}.
+    
+    ### SEBI-AMFI COMPLIANCE SAFETY VALVES:
+    1. HORIZON GUARDRAIL: If Goal Horizon < 3 years (Status: ${isShortHorizon ? 'YES' : 'NO'}), Total Equity exposure MUST NOT exceed 20%. Use Debt/Liquid/Low-Duration funds instead.
+    2. INTERNATIONAL EXIT: If Age > 45, NO International funds (Remove currency volatility risk).
+    3. QUALITY FILTER: NO Credit Risk, Sectoral, Thematic, or Contra funds. Cap "Focused Funds" at 10% weightage.
+    4. EQUITY GLIDE PATH: Equity % must reduce as age increases.
+    
+    ### ASSET ALLOCATION TARGETS FOR AGE ${age}:
+    - Use appropriate Mix of: Active Equity, LC Index, Gold, Intl (only if < 45), and Debt (Liquid/Ultra-Short/Corp Bond).
+    
+    ### OUTPUT:
+    - 5 schemes with 100% total allocation.
+    - 4 alternatives per scheme (same category).
+    - Regular Growth plans ONLY.
+  `;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
@@ -245,8 +244,8 @@ export const getRecommendedSchemes = async (profile: RiskProfile, age: number, i
 };
 
 export const resolvePortfolioOverlaps = async (currentPortfolio: RecommendedScheme[], profile: RiskProfile): Promise<RecommendedScheme[]> => {
-  const prompt = `Re-optimize the following portfolio to remove duplicate funds while maintaining the exact same category structure and ensuring 100% allocation sum.
-    Ensure all risk labels ('sebiRisk') are accurate based on current AMFI data: ${JSON.stringify(currentPortfolio.map(s => s.name))}`;
+  const prompt = `Detect and resolve any duplicate fund names or high-overlap fund categories in this portfolio: ${JSON.stringify(currentPortfolio.map(s => s.name))}.
+    Maintain the same risk profile (${profile.category}) and return 5 distinct high-quality funds.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',

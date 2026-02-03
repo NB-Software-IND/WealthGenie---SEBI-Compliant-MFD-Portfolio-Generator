@@ -55,6 +55,7 @@ export interface PortfolioSummary {
   totalInvestable: number;
   reasoning: string;
   breakdown: CalculationGranularDetails;
+  suitabilityNarrative?: string;
 }
 
 export interface SchemePerformance {
