@@ -316,7 +316,32 @@ const App: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Monthly Expenses" type="number" value={financial.monthlyExpenses} onChange={v => setFinancial({...financial, monthlyExpenses: v})} />
-                <Input label="Yearly Expenses" type="number" value={financial.yearlyExpenses} onChange={v => setFinancial({...financial, yearlyExpenses: v})} />
+                <Input label="Yearly Non-Insurance Expenses" type="number" value={financial.yearlyExpenses} onChange={v => setFinancial({...financial, yearlyExpenses: v})} tooltip="Any yearly commitments like school fees, travel, etc. EXCLUDING insurance premiums." />
+              </div>
+
+              <div className="p-6 bg-rose-50/30 rounded-[2rem] border-2 border-rose-100 space-y-4">
+                <p className="text-[10px] font-black text-rose-900/60 uppercase tracking-[0.2em] px-2 mb-2">Yearly Insurance Premiums</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Input 
+                    label="Term Insurance (₹)" 
+                    type="number" 
+                    value={financial.insurance.termPlan} 
+                    onChange={v => setFinancial({...financial, insurance: { ...financial.insurance, termPlan: v }})} 
+                  />
+                  <Input 
+                    label="Health Insurance (₹)" 
+                    type="number" 
+                    value={financial.insurance.healthInsurance} 
+                    onChange={v => setFinancial({...financial, insurance: { ...financial.insurance, healthInsurance: v }})} 
+                  />
+                  <Input 
+                    label="Personal Accident (₹)" 
+                    type="number" 
+                    value={financial.insurance.personalAccident} 
+                    onChange={v => setFinancial({...financial, insurance: { ...financial.insurance, personalAccident: v }})} 
+                  />
+                </div>
+                <p className="text-[9px] text-slate-500 px-2 italic">* These will be amortized monthly as mandatory expenses in the AI calculation.</p>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/60">

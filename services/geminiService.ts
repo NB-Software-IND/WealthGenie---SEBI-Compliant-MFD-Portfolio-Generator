@@ -21,7 +21,7 @@ export const validateFinancialHealth = async (personal: PersonalDetails, financi
     Total Investible Corpus: ₹${financial.totalCorpusToInvest}
     Financial Base for Tax Calculation (Annual Salary + Total Corpus): ₹${totalFinancialBase}
     User Selected Tax Slab: ${financial.taxSlab}
-    Total Monthly Outflow (Expenses + Amortized Yearly + Insurance): ₹${totalMonthlyOutflow.toFixed(2)}
+    Total Monthly Outflow (Expenses + Amortized Yearly + Insurance Premiums): ₹${totalMonthlyOutflow.toFixed(2)}
     
     CHECK FOR CONTRADICTIONS:
     1. Monthly Income < Total Monthly Outflow. (This is a FATAL error).
@@ -96,19 +96,21 @@ export const calculateRiskProfile = async (score: number, age: number): Promise<
 export const getPortfolioSummary = async (financial: FinancialDetails, personal: PersonalDetails): Promise<PortfolioSummary> => {
   const insuranceMonthly = (financial.insurance.termPlan + financial.insurance.healthInsurance + financial.insurance.personalAccident) / 12;
   const amortizedYearly = financial.yearlyExpenses / 12;
+  const totalMandatoryOutflow = financial.monthlyExpenses + amortizedYearly + insuranceMonthly;
   
   const prompt = `
     As a Senior Financial Planner, calculate recommended SIP and Lumpsum for ${personal.name} (Age: ${personal.age}):
     - Monthly Inflow: ₹${financial.monthlyIncome}
-    - Total Outflow: ₹${(financial.monthlyExpenses + amortizedYearly + insuranceMonthly).toFixed(2)}
+    - Total Outflow (Monthly Exp + Amortized Yearly + Amortized Insurance): ₹${totalMandatoryOutflow.toFixed(2)}
     - Investible Corpus: ₹${financial.totalCorpusToInvest}
 
     STRICT RULES:
-    1. Emergency Buffer: 10-15% of Inflow.
-    2. SIP = Surplus - Buffer.
-    3. Lumpsum = 80% of Corpus.
+    1. Mandatory Outflow Priority: Insurance premiums (Amortized monthly) MUST be subtracted from surplus BEFORE considering any investment.
+    2. Emergency Buffer: 10-15% of Inflow must be kept aside.
+    3. SIP = (Monthly Inflow - Total Outflow) - Emergency Buffer. If negative, set to 0.
+    4. Lumpsum = 80% of Corpus (to maintain liquidity).
     
-    Also, generate a 3-sentence "Suitability Narrative" for SEBI compliance explaining WHY this asset allocation fits their profile.
+    Also, generate a 3-sentence "Suitability Narrative" for SEBI compliance explaining WHY this asset allocation fits their profile, specifically mentioning the safety of having insurance in place.
     
     Return JSON matching the PortfolioSummary structure precisely.
   `;
